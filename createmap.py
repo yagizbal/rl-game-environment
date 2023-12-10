@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from perlin_noise import PerlinNoise
-
+from scipy.signal import convolve2d
 from drawmap import *
 
 
@@ -12,7 +12,6 @@ def map_maker(scale,object_):
     object_ -> object to be used for the map, type: int
     '''
     return np.full((100*scale,100*scale),object_)
-
 
 def executor(array, steps):
     """
@@ -26,7 +25,6 @@ def executor(array, steps):
     for step in steps:
         temp_array=step["method"](temp_array,**step["args"])
     return temp_array
-
 
 def sigmoid_(array,num,float=True):
     """
@@ -79,25 +77,22 @@ def convert_float_to_int(array,segments):
     array[array<0]=0
     return array
 
-def convolute(array,kernel,stride):
+def convolute(array, kernel, stride):
     """
-    This function takes an array, a kernel size and a stride, and convolutes the array.
+    This function takes an array, a kernel size, and a stride, and convolutes the array.
     array -> array to be convoluted, type: np.array
     kernel -> size of the kernel, type: int
     stride -> size of the stride, type: int
     """
-    rows = array.shape[0]
-    columns = array.shape[1]
+    # Create a kernel matrix (you might want a different kernel based on your application)
+    kernel_matrix = np.ones((kernel, kernel)) / (kernel * kernel)
 
-    ls = []
-    for row in range(rows-kernel):
-        ls1=[]
-        for i in range(columns-kernel):
-            tile_value=np.sum(array[0+(row*stride):kernel+(row*stride),0+(i*stride):kernel+(stride*i)])/(kernel*kernel)
-            ls1.append(tile_value)
-        ls.append(ls1)
-    ls=np.array(ls)
-    return ls
+    # Perform convolution
+    convoluted = convolve2d(array, kernel_matrix, mode='valid')
+
+    # Downsampling the convoluted array based on the stride
+    return convoluted[::stride, ::stride]
+
 
 def border(array,bordersize,object):
     """
@@ -113,55 +108,21 @@ def border(array,bordersize,object):
     temp[int(bordersize/2):-int(bordersize/2),int(bordersize/2):-int(bordersize/2)]=array
     return temp
 
-def upscale_array(array,upscale):
+def upscale_array(array, upscale):
     """
     This function takes an array and an upscale value, and upscales the array.
     array -> array to be upscaled, type: np.array
     upscale -> upscale value, type: int
     """
-    grid = array.shape
-    x = grid[0]*upscale
-    y = grid[1]*upscale
-    temp = np.zeros((x,y))
-    for i in range(grid[0]):
-        for j in range(grid[1]):
-            temp[i*upscale:i*upscale+upscale,j*upscale:j*upscale+upscale]=array[i,j]
-    return temp
-
-def create_map(amount,scale,upscale):
-    for i in range(amount):
-        #scale=5
-        #upscale=25
-
-        array_ = map_maker(scale=scale,object_= 0)
-        array_ = perlin_(array_, octaves=random.choice([1,4,10]), seed=random.randint(0,100), object=0, bias=0, float=True)   
+    # Repeat the array 'upscale' times along both axes
+    return np.repeat(np.repeat(array, upscale, axis=0), upscale, axis=1)
 
 
-        array_ = bias_(array_,(random.random()*1.2))
-        #create a line of going through the upper 1/4 of the map, as tall as 1/15th of the map
-        array_[int(array_.shape[0]/4):int(array_.shape[0]/4)+int(array_.shape[0]/20),:]=0 
-        #create a line of going through the lower 1/4 of the map, as tall as 1/15th of the map
-        array_[int(array_.shape[0]/4)*3:int(array_.shape[0]/4)*3+int(array_.shape[0]/20),:]=0
+def save_entity_map(name,entity_full):
+    #already_saved = (os.listdir("saved_entities"))
 
-
-        array_ = upscale_array(array_,upscale=upscale)
-        array_ = convolute(array_,kernel=int(scale*(10*upscale/2)),stride=1) #convolute to smoothe the transitions
-
-        array_[array_<0]=0
-
-        """After creating the map of floats and deleting the outliers, we break it down into integers which will be used for the color dict.
-        """
-
-
-        array_integer = convert_float_to_int(array_,segments=10)
-        array_integer = border(array_integer,70,10)
-        
-
-        save_map(array_integer, draw=True, float=False)
-        img = draw_map(array_integer, float=False)
-
-#create_map(amount=10,scale=5,upscale=5)
-
+    #save numpy array with name
+    np.save(f"saved_entities/{name}-.npy",entity_full)
 
 def populate_map(map_full,amount,tile_bias_list,object,entity_full=None):
     """
@@ -198,9 +159,7 @@ def populate_map(map_full,amount,tile_bias_list,object,entity_full=None):
     choices_occurrences = {}
     for choice in choices:
         choices_occurrences[choice] = choices.count(choice)
-    
-    print(choices_occurrences)
-    
+        
     #now place the objects
     for choice in choices_occurrences:
         tile_positions = np.where(map_full == choice)
@@ -208,9 +167,71 @@ def populate_map(map_full,amount,tile_bias_list,object,entity_full=None):
             index = random.randint(0, len(tile_positions[0]) - 1)
             row, col = tile_positions[0][index], tile_positions[1][index]
             entity_full[row][col] = object
-
+    
+    
 
     return entity_full
+
+def create_map(amount,scale,upscale, tile_bias_lists=None):
+    for i in range(amount):
+        #scale=5
+        #upscale=25
+
+        array_ = map_maker(scale=scale,object_= 0)
+        array_ = perlin_(array_, octaves=random.choice([0.5,1,4,10]), seed=random.randint(0,100), object=0, bias=0, float=True)   
+
+
+        array_ = bias_(array_,(random.random()*1.1))
+        
+        #create a line of going through the upper 1/4 of the map, as tall as 1/15th of the map
+        array_[int(array_.shape[0]/2):int(array_.shape[0]/2)+int(array_.shape[0]/random.choice([10,20,30])),:]=0 
+        
+        #array_[int(array_.shape[0]/4)*3:int(array_.shape[0]/4)*3+int(array_.shape[0]/random.choice([10,20,30])),:]=0
+
+        if upscale!=1:
+            array_ = upscale_array(array_,upscale=upscale)
+
+            
+        #array_ = convolute(array_,kernel=int(scale*5),stride=1) #convolute to smoothe the transitions
+        array_ = convolute(array_, kernel=int(scale * upscale), stride=3)
+
+
+        array_[array_<0]=0
+
+        """After creating the map of floats and deleting the outliers, we break it down into integers which will be used for the color dict.
+        """
+        print(array_.shape,"o")
+
+        array_integer = convert_float_to_int(array_,segments=10)
+        map_full = border(array_integer,70,10)
+
+
+        entity_full = np.zeros((map_full.shape[0],map_full.shape[1]))
+        if tile_bias_lists:
+            grid = (map_full.shape[0],map_full.shape[1])
+            tile_count = (grid[0]-70)*(grid[1]-70)
+
+            ts = len(np.where(map_full==3)[0])
+            fs = len(np.where(map_full==4)[0])
+            ffs = len(np.where(map_full==5)[0])
+            ss = len(np.where(map_full==6)[0])
+            fertility = ((ts*3)+(fs*3)+(ffs*2)+(ss*1))/tile_count
+            population_entity = int(fertility*(tile_count/100))
+
+            print("mm")
+
+            entity_full = np.zeros((map_full.shape[0],map_full.shape[1]))
+            for ls in tile_bias_lists:
+                obj = (list(ls.keys())[0])
+                tile_bias_list = (ls.get(obj))
+
+                entity_full = populate_map(map_full,amount=population_entity,tile_bias_list=tile_bias_list,object=obj, entity_full=entity_full)
+
+            #save_entity_map(name=f"{i}",entity_full=entity_full)
+        
+        save_map(map_array=map_full, entity_array= entity_full, draw=True, float=False)
+        img = draw_map(map_full, float=False)
+
 
 
 
