@@ -4,7 +4,6 @@ from perlin_noise import PerlinNoise
 from scipy.signal import convolve2d
 from drawmap import *
 
-
 def map_maker(scale,object_):
     '''This function creates a map of a given scale and fills it with a given object. 
     For example, if scale=1 and object_=0, the map will be 100x100 and filled with 0s.
@@ -77,21 +76,25 @@ def convert_float_to_int(array,segments):
     array[array<0]=0
     return array
 
-def convolute(array, kernel, stride):
+def convolute(array,kernel,stride):
     """
-    This function takes an array, a kernel size, and a stride, and convolutes the array.
+    This function takes an array, a kernel size and a stride, and convolutes the array.
     array -> array to be convoluted, type: np.array
     kernel -> size of the kernel, type: int
     stride -> size of the stride, type: int
     """
-    # Create a kernel matrix (you might want a different kernel based on your application)
-    kernel_matrix = np.ones((kernel, kernel)) / (kernel * kernel)
+    rows = array.shape[0]
+    columns = array.shape[1]
 
-    # Perform convolution
-    convoluted = convolve2d(array, kernel_matrix, mode='valid')
-
-    # Downsampling the convoluted array based on the stride
-    return convoluted[::stride, ::stride]
+    ls = []
+    for row in range(rows-kernel):
+        ls1=[]
+        for i in range(columns-kernel):
+            tile_value=np.sum(array[0+(row*stride):kernel+(row*stride),0+(i*stride):kernel+(stride*i)])/(kernel*kernel)
+            ls1.append(tile_value)
+        ls.append(ls1)
+    ls=np.array(ls)
+    return ls
 
 
 def border(array,bordersize,object):
@@ -168,9 +171,34 @@ def populate_map(map_full,amount,tile_bias_list,object,entity_full=None):
             row, col = tile_positions[0][index], tile_positions[1][index]
             entity_full[row][col] = object
     
-    
+    return entity_full
+
+
+def populate_map2(map_full, amount, tile_bias_list, object, entity_full=None):
+    if entity_full is None:
+        entity_full = np.zeros(map_full.shape, dtype=map_full.dtype)
+
+    # Calculate total biases for normalization
+    total_bias = sum(bias for _, bias in tile_bias_list)
+
+    # Prepare the probabilities array
+    probabilities = np.zeros_like(map_full, dtype=float)
+    for tile, bias in tile_bias_list:
+        probabilities += (map_full == tile) * (bias / total_bias)
+
+    # Flatten the array for easy sampling
+    flat_probabilities = probabilities.flatten()
+    flat_indices = np.arange(map_full.size)
+
+    # Sample without replacement to avoid collisions
+    chosen_indices = np.random.choice(flat_indices, size=amount, replace=False, p=flat_probabilities/flat_probabilities.sum())
+
+    # Update the entity_full array
+    rows, cols = np.unravel_index(chosen_indices, map_full.shape)
+    entity_full[rows, cols] = object
 
     return entity_full
+
 
 def create_map(amount,scale,upscale, tile_bias_lists=None):
     for i in range(amount):
@@ -184,23 +212,24 @@ def create_map(amount,scale,upscale, tile_bias_lists=None):
         array_ = bias_(array_,(random.random()*1.1))
         
         #create a line of going through the upper 1/4 of the map, as tall as 1/15th of the map
-        array_[int(array_.shape[0]/2):int(array_.shape[0]/2)+int(array_.shape[0]/random.choice([10,20,30])),:]=0 
+        array_[int(array_.shape[0]/4):int(array_.shape[0]/4)+int(array_.shape[0]/random.choice([15,20,30])),:]=0
         
-        #array_[int(array_.shape[0]/4)*3:int(array_.shape[0]/4)*3+int(array_.shape[0]/random.choice([10,20,30])),:]=0
+        array_[int(array_.shape[0]/2):int(array_.shape[0]/2)+int(array_.shape[0]/random.choice([15,25,35])),:]=1
+
+        array_[int(array_.shape[0]/4)*3:int(array_.shape[0]/4)*3+int(array_.shape[0]/random.choice([15,20,30])),:]=0
 
         if upscale!=1:
             array_ = upscale_array(array_,upscale=upscale)
 
             
-        #array_ = convolute(array_,kernel=int(scale*5),stride=1) #convolute to smoothe the transitions
-        array_ = convolute(array_, kernel=int(scale * upscale), stride=3)
+        array_ = convolute(array_,kernel=int(scale*upscale),stride=1) #convolute to smoothe the transitions
+        #array_ = convolute(array_, kernel=int(scale * upscale), stride=10)
 
 
         array_[array_<0]=0
 
         """After creating the map of floats and deleting the outliers, we break it down into integers which will be used for the color dict.
         """
-        print(array_.shape,"o")
 
         array_integer = convert_float_to_int(array_,segments=10)
         map_full = border(array_integer,70,10)
@@ -218,19 +247,25 @@ def create_map(amount,scale,upscale, tile_bias_lists=None):
             fertility = ((ts*3)+(fs*3)+(ffs*2)+(ss*1))/tile_count
             population_entity = int(fertility*(tile_count/100))
 
-            print("mm")
 
             entity_full = np.zeros((map_full.shape[0],map_full.shape[1]))
+
+            
             for ls in tile_bias_lists:
                 obj = (list(ls.keys())[0])
                 tile_bias_list = (ls.get(obj))
 
-                entity_full = populate_map(map_full,amount=population_entity,tile_bias_list=tile_bias_list,object=obj, entity_full=entity_full)
+                entity_full = populate_map2(map_full,amount=population_entity,tile_bias_list=tile_bias_list,object=obj, entity_full=entity_full)
 
             #save_entity_map(name=f"{i}",entity_full=entity_full)
         
         save_map(map_array=map_full, entity_array= entity_full, draw=True, float=False)
         img = draw_map(map_full, float=False)
+
+
+
+
+
 
 
 
