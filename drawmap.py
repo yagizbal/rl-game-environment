@@ -39,7 +39,8 @@ def draw_map(map_array,color_dict=None,float=False,value=1):
     
     return img
 
-def save_map(map_array,color_dict=None,draw=True,float=False,flip=False,settings=False,value=1,extend=""):      
+
+def save_map(map_array, entity_array, color_dict=None,draw=True,float=False,flip=False,settings=False,value=1,extend=""):      
     """
     """      
     already_saved = (os.listdir("saved_arrays"))
@@ -66,3 +67,6 @@ def save_map(map_array,color_dict=None,draw=True,float=False,flip=False,settings
             with open(f"saved_settings/{generated_name}.txt","w") as f:
                 f.write(f"float={float}\nvalue={value}\nflip={flip}\n")
         
+    if entity_array is not None:
+        np.save(f"saved_entities/{generated_name}.npy",entity_array)
+  
